@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "metabase": {
+      "type": "http",
+      "url": "{METABASE_INSTANCE_PLACEHOLDER}/api/mcp"
+    }
+  }
+}

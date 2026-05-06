@@ -1,0 +1,30 @@
+{
+  "name": "metabase",
+  "version": "0.1.0",
+  "description": "Search, query, and visualize data from your Metabase instance inside Codex.",
+  "author": {
+    "name": "Metabase",
+    "url": "https://www.metabase.com"
+  },
+  "homepage": "https://www.metabase.com",
+  "repository": "https://github.com/metabase/metabase-codex-plugin",
+  "license": "MIT",
+  "keywords": ["metabase", "bi", "analytics", "sql", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Metabase",
+    "shortDescription": "Search, query, and visualize data from your Metabase instance.",
+    "longDescription": "Connects Codex to a Metabase instance via the Metabase MCP server. Search tables and metrics, construct queries against the semantic layer, execute them, and create saved questions and dashboards — all scoped to your Metabase permissions through OAuth.",
+    "developerName": "Metabase",
+    "category": "Data",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://www.metabase.com",
+    "privacyPolicyURL": "https://www.metabase.com/license/privacy",
+    "termsOfServiceURL": "https://www.metabase.com/license/website-terms-of-service",
+    "defaultPrompt": [
+      "Use Metabase to find tables related to <topic>.",
+      "Use Metabase to query <table> and summarize <metric> by <dimension>."
+    ]
+  }
+}
