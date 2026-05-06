@@ -1,9 +1,10 @@
 {
   "name": "metabase",
   "version": "0.1.0",
-  "description": "Search, query, and visualize data from your Metabase instance inside Codex.",
+  "description": "Query and explore your Metabase data",
   "author": {
     "name": "Metabase",
+    "email": "support@metabase.com",
     "url": "https://www.metabase.com"
   },
   "homepage": "https://www.metabase.com",
@@ -14,8 +15,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Metabase",
-    "shortDescription": "Search, query, and visualize data from your Metabase instance.",
-    "longDescription": "Connects Codex to a Metabase instance via the Metabase MCP server. Search tables and metrics, construct queries against the semantic layer, execute them, and create saved questions and dashboards — all scoped to your Metabase permissions through OAuth.",
+    "shortDescription": "Query and explore your Metabase data",
+    "longDescription": "Search tables and metrics, run queries, explore field values, spins up instances and embed dashboards",
     "developerName": "Metabase",
     "category": "Data",
     "capabilities": ["Read", "Write"],
