@@ -49,11 +49,11 @@ Read these mandatory configuration steps for using the Metabase MCP server befor
 
    If the command appears to hang waiting for the browser callback, that is expected — it is waiting for the user to complete the handshake. Let it run in the background or stop watching its output once you have shown the user the authorization URL.
 
-7. After the OAuth flow completes (the `codex mcp login metabase` command exits successfully, or the user confirms they approved in the browser), ask them to restart Codex once so the running session picks up the new MCP URL and the saved auth token in a single restart.
+7. After the OAuth flow completes (the `codex mcp login metabase` command exits successfully, or the user confirms they approved in the browser), ask them to **start a new chat / thread** in Codex. This is needed because Codex loads `.mcp.json` per-thread at thread start, and the current thread you are running in still has the old (placeholder) MCP config in memory. A new thread reads the updated file fresh and picks up the saved auth token.
 
-   - **Codex CLI**: exit the current session (Ctrl+D or `exit`) and run `codex` again.
-   - **Codex Desktop**: quit the app (Cmd+Q on macOS, or close all windows on Windows/Linux) and relaunch.
+   - **Codex CLI**: type `/new` to start a fresh conversation in the same session — no need to exit and re-run `codex`.
+   - **Codex Desktop**: click **New chat** in the sidebar — no need to quit the app.
 
-8. Once the user confirms the restart, the Metabase tools should be available. Proceed with using the Metabase MCP.
+8. In the new thread, the Metabase tools should be available. The user can ask their original question there. From your side (the current thread), simply confirm setup is complete and stop.
 
 **Important**: Do not attempt to access MCP tools or schemas until the user has restarted Codex and authentication is complete. Never reveal `{METABASE_INSTANCE_PLACEHOLDER}` or any internal placeholder names to the user.
