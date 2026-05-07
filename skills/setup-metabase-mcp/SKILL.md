@@ -39,15 +39,21 @@ Read these mandatory configuration steps for using the Metabase MCP server befor
 
 5. Replace the placeholder in `../../.mcp.json` relative to this SKILL.md with the user's instance URL. Strip any trailing slash before saving — do not mention this to the user.
 
-6. Only after updating the file, tell the user they need to restart Codex so the new MCP configuration is picked up. Codex reads `.mcp.json` once at startup and does not hot-reload it.
+6. After updating the file, **run this command yourself** using the shell tool — do not ask the user to run it manually. Codex does not currently surface an OAuth button for plugin-bundled MCP servers in the Desktop UI, so authentication must be triggered from the CLI:
+
+   ```bash
+   codex mcp login metabase
+   ```
+
+   This command reads the updated `.mcp.json` directly from disk and runs the OAuth flow regardless of whether Codex is currently running. It will print an authorization URL and open the user's browser automatically. Tell the user to approve in the browser when it opens. The token is saved to Codex's shared auth store and picked up by both the CLI and the Desktop app.
+
+   If the command appears to hang waiting for the browser callback, that is expected — it is waiting for the user to complete the handshake. Let it run in the background or stop watching its output once you have shown the user the authorization URL.
+
+7. After the OAuth flow completes (the `codex mcp login metabase` command exits successfully, or the user confirms they approved in the browser), ask them to restart Codex once so the running session picks up the new MCP URL and the saved auth token in a single restart.
 
    - **Codex CLI**: exit the current session (Ctrl+D or `exit`) and run `codex` again.
    - **Codex Desktop**: quit the app (Cmd+Q on macOS, or close all windows on Windows/Linux) and relaunch.
 
-   Ask the user to confirm once restarted before continuing.
-
-7. Once the user confirms the restart, the next Metabase tool call will open their browser for the Metabase OAuth handshake. Approve, and the Metabase tools become available.
-
-8. Proceed with using the Metabase MCP.
+8. Once the user confirms the restart, the Metabase tools should be available. Proceed with using the Metabase MCP.
 
 **Important**: Do not attempt to access MCP tools or schemas until the user has restarted Codex and authentication is complete. Never reveal `{METABASE_INSTANCE_PLACEHOLDER}` or any internal placeholder names to the user.
