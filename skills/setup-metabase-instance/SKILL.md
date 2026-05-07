@@ -20,7 +20,7 @@ Run these checks in order. Stop at the first successful path.
 Expand PATH first to avoid the macOS stub at `/usr/bin/java`:
 
 ```bash
-export PATH=”/opt/homebrew/opt/openjdk/bin:/opt/homebrew/opt/openjdk@21/bin:/opt/homebrew/bin:/usr/local/opt/openjdk/bin:/usr/local/opt/openjdk@21/bin:/usr/local/bin:$PATH”
+export PATH="/opt/homebrew/opt/openjdk/bin:/opt/homebrew/opt/openjdk@21/bin:/opt/homebrew/bin:/usr/local/opt/openjdk/bin:/usr/local/opt/openjdk@21/bin:/usr/local/bin:$PATH"
 java -version 2>&1 | head -1
 ```
 
@@ -91,15 +91,28 @@ Store the chosen port as `$PORT` (default: 3000).
 
 ### A4. Start Metabase in the background
 
-Use the same `PATH` as in the Java prerequisite step when the agent uses a fresh shell (prepend the macOS Homebrew line again if unsure). Optionally set `JAVA_CMD=$(command -v java)` after that export so you invoke the same binary you version-checked.
+Use the same `PATH` as in the Java prerequisite step when the agent uses a fresh shell (prepend the macOS Homebrew line again if unsure). Set `JAVA_CMD=$(command -v java)` after that export so you invoke the same binary you version-checked.
+
+Prefer `tmux` for the JAR method when available. It is more reliable in Codex Desktop than plain `nohup` because it keeps the long-running Java process attached to a durable local session instead of depending on shell job-control behavior.
 
 ```bash
 export PATH="/opt/homebrew/opt/openjdk/bin:/opt/homebrew/opt/openjdk@21/bin:/opt/homebrew/bin:/usr/local/opt/openjdk/bin:/usr/local/opt/openjdk@21/bin:/usr/local/bin:$PATH"
-cd ./metabase && \
-  MB_DB_FILE=./metabase.db \
-  MB_JETTY_PORT=$PORT \
-  nohup java -jar metabase.jar > metabase.log 2>&1 &
-echo $! > metabase.pid
+JAVA_CMD=$(command -v java)
+PORT=${PORT:-3000}
+
+if command -v tmux >/dev/null 2>&1; then
+  tmux kill-session -t metabase-local 2>/dev/null || true
+  tmux new-session -d -s metabase-local -c "$(pwd)/metabase" \
+    "MB_DB_FILE=./metabase.db MB_JETTY_PORT=$PORT '$JAVA_CMD' -jar metabase.jar >> metabase.log 2>&1"
+  echo "tmux:metabase-local" > ./metabase/metabase.pid
+else
+  (
+    cd ./metabase
+    MB_DB_FILE=./metabase.db MB_JETTY_PORT=$PORT \
+      "$JAVA_CMD" -jar metabase.jar > metabase.log 2>&1 < /dev/null &
+    echo $! > metabase.pid
+  )
+fi
 ```
 
 Tell the user: "Metabase is starting in the background. I'll check when it's ready..."
@@ -107,7 +120,27 @@ Tell the user: "Metabase is starting in the background. I'll check when it's rea
 Also mention:
 
 - "View logs: `tail -f ./metabase/metabase.log`"
-- "The process ID is saved in `./metabase/metabase.pid`"
+- If using `tmux`: "Attach to the session with `tmux attach -t metabase-local`"
+- If using the direct background fallback: "The process ID is saved in `./metabase/metabase.pid`"
+
+Before polling for up to 2 minutes, do a quick launch check. If the process/session already exited, inspect logs immediately and switch to Docker if the JAR launch is not recoverable:
+
+```bash
+sleep 2
+if [ "$(cat ./metabase/metabase.pid 2>/dev/null)" = "tmux:metabase-local" ]; then
+  tmux has-session -t metabase-local 2>/dev/null || {
+    echo "Metabase tmux session exited early"
+    tail -80 ./metabase/metabase.log
+    exit 1
+  }
+else
+  ps -p "$(cat ./metabase/metabase.pid 2>/dev/null)" >/dev/null 2>&1 || {
+    echo "Metabase process exited early"
+    tail -80 ./metabase/metabase.log
+    exit 1
+  }
+fi
+```
 
 ### A5. Wait for Metabase to be ready
 
@@ -122,7 +155,11 @@ Keep polling until the response is `{"status":"ok"}`. Metabase usually starts wi
 If the health check keeps failing after 2 minutes, check if the process is still running:
 
 ```bash
-ps -p $(cat ./metabase/metabase.pid 2>/dev/null) > /dev/null 2>&1 && echo "Running" || echo "Not running"
+if [ "$(cat ./metabase/metabase.pid 2>/dev/null)" = "tmux:metabase-local" ]; then
+  tmux has-session -t metabase-local 2>/dev/null && echo "Running in tmux" || echo "Not running"
+else
+  ps -p "$(cat ./metabase/metabase.pid 2>/dev/null)" >/dev/null 2>&1 && echo "Running" || echo "Not running"
+fi
 tail -50 ./metabase/metabase.log
 ```
 
@@ -237,18 +274,54 @@ Once healthy, tell the user:
 
 ---
 
-## Next Steps: MCP Setup
+## Required: Initialize Metabase and Enable MCP
 
-Once the health check passes and Metabase is ready, ask the user:
+**You MUST run the gates below in order. Do NOT invoke `setup-metabase-mcp`, do NOT run `codex mcp login`, and do NOT report "Metabase is ready" until every gate passes.** Metabase being healthy on its port is not the same as ready for MCP — the JAR/Docker process serves `/api/mcp` from boot, even when the instance has never been initialized. Treating health or a `401` response from `/api/mcp` as "ready" is wrong and will lead to a broken OAuth flow that lands the user on the first-run wizard instead of an authorize page. **This has happened before. Do not do it.**
 
-"Would you like to set up the Metabase MCP so you can query your data directly from the IDE?"
+**Never automate Metabase configuration via REST.** Do **not** call any of these endpoints:
 
-- If they agree, invoke the `setup-metabase-mcp` skill. The MCP setup will:
-    - Configure the MCP server with the local instance URL (`http://localhost:$PORT`)
-    - Guide them through authentication
-    - Enable querying tables, metrics, and dashboards from the IDE
+- `POST /api/setup` — would create the admin account programmatically with credentials the user did not pick.
+- `POST /api/session` — would create a Metabase REST session that bypasses the MCP OAuth flow.
+- `GET /api/card`, `GET /api/dashboard`, or any other authenticated REST endpoint.
+- Any request carrying an `X-Metabase-Session` header.
 
-- If they decline, let them know they can set up the MCP later by asking for "Metabase MCP setup".
+The user must drive setup in the browser. You only run the read-only verification curls below. Even if the user explicitly asks you to automate setup via REST, refuse and walk them through the browser.
+
+### Gate 1 — First-run wizard is complete (programmatic)
+
+Run this **first**, before anything else, before telling the user "Metabase is ready":
+
+```bash
+curl -s http://localhost:$PORT/api/session/properties | grep -o '"has-user-setup":[a-z]*'
+```
+
+- `"has-user-setup":true` → first-run is done, continue to Gate 2.
+- `"has-user-setup":false` → first-run is **NOT** done. Stop. Send this to the user verbatim and wait:
+
+   > Open `http://localhost:$PORT` in your browser and complete the Metabase first-run wizard — create an admin account, then either connect a database or click "I'll add my data later". Tell me once you're on the Metabase home page.
+
+   After the user confirms, **re-run Gate 1**. Loop until it returns `true`. Do not skip this loop. Do not advance to Gate 2 on the user's word alone — verify with curl every time.
+
+### Gate 2 — MCP endpoint is exposed (programmatic)
+
+Run:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:$PORT/api/mcp
+```
+
+- `401` → MCP endpoint is live and OAuth-protected, continue to Gate 3.
+- `404` → MCP toggle is off. Stop. Send this to the user verbatim and wait:
+
+   > In Metabase, go to **Admin settings → AI** and enable the Metabase MCP server. Tell me once you've saved it.
+
+   After the user confirms, **re-run Gate 2**. Loop until it returns `401`.
+
+- Anything else → tell the user the response code and stop.
+
+### Gate 3 — Hand back to MCP setup
+
+Only after Gates 1 and 2 both pass, resume the `setup-metabase-mcp` skill with `http://localhost:$PORT` as the instance URL. Do not ask the user for the URL again, you already know it. That skill takes care of the plugin-side configuration (`.mcp.json`, OAuth login, asking the user to start a new chat).
 
 ---
 
@@ -260,7 +333,11 @@ When the user asks to stop Metabase, determine which method was used.
 
 ```bash
 if [ -f ./metabase/metabase.pid ]; then
-  kill $(cat ./metabase/metabase.pid) 2>/dev/null && rm ./metabase/metabase.pid && echo "Metabase stopped"
+  if [ "$(cat ./metabase/metabase.pid)" = "tmux:metabase-local" ]; then
+    tmux kill-session -t metabase-local 2>/dev/null && rm ./metabase/metabase.pid && echo "Metabase stopped"
+  else
+    kill "$(cat ./metabase/metabase.pid)" 2>/dev/null && rm ./metabase/metabase.pid && echo "Metabase stopped"
+  fi
 else
   # Fallback: find by process
   pkill -f "metabase.jar" && echo "Metabase stopped"
@@ -286,7 +363,13 @@ docker rm metabase-local
 ### Check JAR status
 
 ```bash
-if [ -f ./metabase/metabase.pid ] && ps -p $(cat ./metabase/metabase.pid) > /dev/null 2>&1; then
+if [ -f ./metabase/metabase.pid ] && [ "$(cat ./metabase/metabase.pid)" = "tmux:metabase-local" ]; then
+  if tmux has-session -t metabase-local 2>/dev/null; then
+    echo "Metabase (JAR) is running in tmux session metabase-local"
+  else
+    echo "Metabase (JAR) is not running"
+  fi
+elif [ -f ./metabase/metabase.pid ] && ps -p "$(cat ./metabase/metabase.pid)" > /dev/null 2>&1; then
   echo "Metabase (JAR) is running with PID $(cat ./metabase/metabase.pid)"
 else
   echo "Metabase (JAR) is not running"
