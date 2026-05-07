@@ -21,8 +21,8 @@
     "category": "Data",
     "capabilities": ["Read", "Write"],
     "websiteURL": "https://www.metabase.com",
-    "privacyPolicyURL": "https://www.metabase.com/license/privacy",
-    "termsOfServiceURL": "https://www.metabase.com/license/website-terms-of-service",
+    "privacyPolicyURL": "https://www.metabase.com/privacy",
+    "termsOfServiceURL": "https://www.metabase.com/terms",
     "defaultPrompt": [
       "Use Metabase to find tables related to <topic>.",
       "Use Metabase to query <table> and summarize <metric> by <dimension>."
