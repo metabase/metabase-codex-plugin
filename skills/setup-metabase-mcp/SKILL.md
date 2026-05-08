@@ -35,7 +35,7 @@ Configure the Metabase MCP plugin to point at the user's Metabase instance and f
 
    If either fails, **stop**. Do not modify `.mcp.json`, do not run `codex mcp login`. Tell the user:
    - For a local URL that came from `setup-metabase-instance`: that skill should have made the instance ready — re-run it and check what failed.
-   - For a self-hosted or Cloud URL the user supplied: ask them to make sure their Metabase is on version 60+ with the MCP feature enabled in **Admin settings → AI**, then re-run this skill. Don't walk them through their own admin — that's not your scope.
+   - For a self-hosted or Cloud URL the user supplied: ask them to confirm their Metabase is on version 60+. The MCP feature is on by default in 60+ and does not require a toggle, so a `404` typically means the version is too old or the URL is wrong.
 
    **Never call `POST /api/setup`, `POST /api/session`, or any other authenticated Metabase REST endpoint.** Those bypass the OAuth flow this skill depends on. If the user asks you to, refuse.
 

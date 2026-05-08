@@ -274,7 +274,7 @@ Once healthy, tell the user:
 
 ---
 
-## Required: Initialize Metabase and Enable MCP
+## Required: Initialize Metabase
 
 **You MUST run the gates below in order. Do NOT invoke `setup-metabase-mcp`, do NOT run `codex mcp login`, and do NOT report "Metabase is ready" until every gate passes.** Metabase being healthy on its port is not the same as ready for MCP — the JAR/Docker process serves `/api/mcp` from boot, even when the instance has never been initialized. Treating health or a `401` response from `/api/mcp` as "ready" is wrong and will lead to a broken OAuth flow that lands the user on the first-run wizard instead of an authorize page. **This has happened before. Do not do it.**
 
@@ -282,8 +282,6 @@ Once healthy, tell the user:
 
 - `POST /api/setup` — would create the admin account programmatically with credentials the user did not pick.
 - `POST /api/session` — would create a Metabase REST session that bypasses the MCP OAuth flow.
-- `GET /api/card`, `GET /api/dashboard`, or any other authenticated REST endpoint.
-- Any request carrying an `X-Metabase-Session` header.
 
 The user must drive setup in the browser. You only run the read-only verification curls below. Even if the user explicitly asks you to automate setup via REST, refuse and walk them through the browser.
 
@@ -300,28 +298,11 @@ curl -s http://localhost:$PORT/api/session/properties | grep -o '"has-user-setup
 
    > Open `http://localhost:$PORT` in your browser and complete the Metabase first-run wizard — create an admin account, then either connect a database or click "I'll add my data later". Tell me once you're on the Metabase home page.
 
-   After the user confirms, **re-run Gate 1**. Loop until it returns `true`. Do not skip this loop. Do not advance to Gate 2 on the user's word alone — verify with curl every time.
+   After the user confirms, **re-run Gate 1**. Loop until it returns `true`. Do not skip this loop. Do not advance on the user's word alone — verify with curl every time.
 
-### Gate 2 — MCP endpoint is exposed (programmatic)
+### Gate 2 — Hand back to MCP setup
 
-Run:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:$PORT/api/mcp
-```
-
-- `401` → MCP endpoint is live and OAuth-protected, continue to Gate 3.
-- `404` → MCP toggle is off. Stop. Send this to the user verbatim and wait:
-
-   > In Metabase, go to **Admin settings → AI** and enable the Metabase MCP server. Tell me once you've saved it.
-
-   After the user confirms, **re-run Gate 2**. Loop until it returns `401`.
-
-- Anything else → tell the user the response code and stop.
-
-### Gate 3 — Hand back to MCP setup
-
-Only after Gates 1 and 2 both pass, resume the `setup-metabase-mcp` skill with `http://localhost:$PORT` as the instance URL. Do not ask the user for the URL again, you already know it. That skill takes care of the plugin-side configuration (`.mcp.json`, OAuth login, asking the user to start a new chat).
+Only after Gate 1 passes, resume the `setup-metabase-mcp` skill with `http://localhost:$PORT` as the instance URL. Do not ask the user for the URL again, you already know it. That skill validates the URL (version + MCP endpoint) and handles the plugin-side configuration (`.mcp.json`, OAuth login, asking the user to start a new chat). Do not duplicate those checks here.
 
 ---
 
