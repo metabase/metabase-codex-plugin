@@ -41,7 +41,7 @@ Configure the Metabase MCP plugin to point at the user's Metabase instance and f
 
 4. Replace `{METABASE_INSTANCE_PLACEHOLDER}` in `../../.mcp.json` with the user's URL, stripped of any trailing slash. Only do this **after step 3 passes**.
 
-5. Check current auth status:
+5. Decide whether to (re-)authenticate:
 
    ```bash
    codex mcp list 2>&1
@@ -49,16 +49,28 @@ Configure the Metabase MCP plugin to point at the user's Metabase instance and f
 
    Find the row whose `Name` is `metabase`, look at its `Auth` column.
 
-   - **`OAuth`** — already authorized, skip step 6.
-   - **`Not logged in`** or **`Unsupported`** — continue to step 6.
+   - If step 4 actually rewrote `.mcp.json` (i.e. placeholder was replaced this run), **treat any saved token as stale** — it was issued against the previous URL and will silently fail with `401`. Skip the rest of step 5 and continue to step 6 to refresh.
+   - Otherwise, the URL is unchanged since the last setup. Use the `Auth` column:
+     - **`OAuth`** — token still valid, skip step 6 entirely.
+     - **`Not logged in`** or **`Unsupported`** — continue to step 6.
 
-6. Run this yourself with the shell tool — do not ask the user to run it. Codex Desktop has no OAuth button for plugin-bundled MCP servers, so login must come from the CLI:
+6. Refresh authentication. Run these yourself with the shell tool — do not ask the user.
+
+   First, clear any stale credentials (idempotent — succeeds even if no token is stored):
+
+   ```bash
+   codex mcp logout metabase 2>&1 || true
+   ```
+
+   Then start the OAuth flow:
 
    ```bash
    codex mcp login metabase
    ```
 
-   It opens the user's browser to approve. The command blocks until the browser callback completes — that is expected; do not retry, just tell the user to approve in the browser.
+   `codex mcp login` opens the user's browser to approve. The command blocks until the browser callback completes — that is expected; do not retry, just tell the user to approve in the browser.
+
+   If the browser does not open, or the user reports the URL leads to a Metabase login form rather than an OAuth approval page, stop and re-check Gate 1 in `setup-metabase-instance` (`has-user-setup`). A stale `Auth: OAuth` row plus an uninitialized instance will land them on the login form.
 
 7. Tell the user to start a new chat so the new MCP config + token take effect:
 
