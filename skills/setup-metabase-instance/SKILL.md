@@ -308,24 +308,22 @@ This gate is **passive**: the server is the source of truth, not the user. You t
 
    > I opened the Metabase first-run wizard in your default browser. Complete it there — I'll detect automatically when you're done.
 
-3. **Start the background poll** (max 2 minutes, 5-second interval). Run this loop with `run_in_background` (or your platform's equivalent) so the chat stays responsive while the user works in the browser:
+3. **Start the background poll** (max 2 minutes, 5-second interval). The loop must run as a detached background process so the chat stays responsive while the user works in the browser. Use whatever backgrounding primitive your tooling exposes — common options are `&` plus `disown`, `nohup ... &`, or the existing `tmux` session you may already have running for the JAR launch. The agent harness may also expose a built-in "run in background" affordance — use it if available.
 
-   ```bash
-   DEADLINE=$(( $(date +%s) + 120 ))
-   while :; do
-     STATE=$(curl -s http://localhost:$PORT/api/session/properties \
-       | grep -o '"has-user-setup":[a-z]*')
-     if [ "$STATE" = '"has-user-setup":true' ]; then
-       echo "Metabase first-run wizard complete"
-       exit 0
-     fi
-     if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-       echo "Timed out after 2 minutes waiting for has-user-setup"
-       exit 1
-     fi
-     sleep 5
-   done
+   The poll, in pseudo-code (pick whatever language/utility your environment offers — `bash`, `python`, agent harness, etc.):
+
    ```
+   deadline = now + 120 seconds
+   loop:
+     resp = GET http://localhost:$PORT/api/session/properties
+     if resp contains '"has-user-setup":true':
+       report success and exit
+     if now >= deadline:
+       report timeout and exit
+     sleep 5 seconds
+   ```
+
+   Surface two distinct outcomes to step 4 (e.g. exit code `0` vs `1`, return value, or a status flag — whatever your runner uses).
 
 4. **Wait for the loop to exit:**
 

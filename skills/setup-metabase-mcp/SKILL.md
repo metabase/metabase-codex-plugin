@@ -43,7 +43,7 @@ Configure the Metabase MCP plugin to point at the user's Metabase instance and f
 
    If any fails, **stop**. Do not modify `.mcp.json`, do not run `codex mcp login`. Failure modes:
 
-   - **`has-user-setup:false`** — the instance is running but has never been initialized. This frequently happens when an agent loads both skills, finds Metabase already up, and jumps straight here. **Forward to the `setup-metabase-instance` skill** so its Gate 1 walks the user through the first-run wizard; once that returns, re-run step 3 here. Do not "just run OAuth and hope" — the OAuth flow will land on the wizard page instead of an authorize page and will hang.
+   - **`has-user-setup:false`** — the instance is running but has never been initialized. This frequently happens when an agent loads both skills, finds Metabase already up, and jumps straight here. If this is the local instance you launched through this workflow, **forward to the `setup-metabase-instance` skill** so its Gate 1 walks the user through the first-run wizard; once that returns, re-run step 3 here. If this is a user-supplied Cloud or self-hosted URL, tell the user to open `<INSTANCE_URL>` in their browser, complete the first-run wizard there, and then come back so you can re-run step 3 here. Do not "just run OAuth and hope" — the OAuth flow will land on the wizard page instead of an authorize page and will hang.
    - **Version < 60** — tell the user to upgrade Metabase, then stop.
    - **`/api/mcp` returns `404`** — MCP is on by default in 60+ and has no toggle, so this usually means the version is older than reported or the URL is wrong. Ask the user to confirm.
    - **Other HTTP codes** — surface the code to the user and stop.
