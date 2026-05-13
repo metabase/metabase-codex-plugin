@@ -3,6 +3,12 @@ name: setup-metabase-mcp
 description: Read these instructions before using Metabase MCP tools. Setup is needed to connect to Metabase instances via the built-in MCP server.
 ---
 
+**Read this entire skill file end-to-end before taking any action.** Do not skim, do not stop at the first matching step, do not act on the summary alone. The gates, failure modes, prohibitions, and post-setup rules are scattered through the document; skipping ahead has repeatedly produced broken flows. Load the full text into context first, then start executing from step 1.
+
+**Follow these instructions exactly as written.** Do not make assumptions, do not "be helpful" by overstepping, do not silently substitute "equivalent" actions for the ones specified. Every step, every verbatim message, every gate, and every prohibition is here because skipping or improvising on it has produced a known regression. If a step says "send this verbatim", send exactly that. If a step says "stop and wait", stop and wait. If a step says "do not call endpoint X", do not call X — even if the user asks you to. When in doubt, do less, not more.
+
+---
+
 Configure the Metabase MCP plugin to point at the user's Metabase instance and finish OAuth. This skill assumes the instance itself is already set up and has the MCP feature enabled — that is the job of the `setup-metabase-instance` skill, not this one. Never mention `{METABASE_INSTANCE_PLACEHOLDER}` or any internal placeholder name to the user — just say the MCP needs their Metabase URL.
 
 ## Valid Instance URL Formats
@@ -22,20 +28,25 @@ Configure the Metabase MCP plugin to point at the user's Metabase instance and f
    - **If they provide a URL**: continue with step 3.
    - **If they don't have one and want to set up a local instance**: invoke the `setup-metabase-instance` skill. That skill spins up Metabase, walks the user through first-run setup and enabling the MCP feature, and returns with a ready URL (typically `http://localhost:3000`). Continue here with that URL.
 
-3. Sanity-check that the URL points at a Metabase instance with MCP enabled. Run **both**:
+3. Sanity-check that the URL points at a **ready-to-use** Metabase instance. Run all three probes:
 
    ```bash
    curl -s <INSTANCE_URL>/api/session/properties | grep -o '"tag":"[^"]*"'
+   curl -s <INSTANCE_URL>/api/session/properties | grep -o '"has-user-setup":[a-z]*'
    curl -s -o /dev/null -w "%{http_code}\n" <INSTANCE_URL>/api/mcp
    ```
 
-   Required:
-   - The version tag's major version is **≥ 60**.
-   - The `/api/mcp` response code is **`401`** (endpoint live, OAuth required).
+   All three must pass:
+   - Version tag's major version is **≥ 60**.
+   - `"has-user-setup":true` — instance has an admin account and is past the first-run wizard.
+   - `/api/mcp` response code is **`401`** — endpoint live, OAuth required.
 
-   If either fails, **stop**. Do not modify `.mcp.json`, do not run `codex mcp login`. Tell the user:
-   - For a local URL that came from `setup-metabase-instance`: that skill should have made the instance ready — re-run it and check what failed.
-   - For a self-hosted or Cloud URL the user supplied: ask them to confirm their Metabase is on version 60+. The MCP feature is on by default in 60+ and does not require a toggle, so a `404` typically means the version is too old or the URL is wrong.
+   If any fails, **stop**. Do not modify `.mcp.json`, do not run `codex mcp login`. Failure modes:
+
+   - **`has-user-setup:false`** — the instance is running but has never been initialized. This frequently happens when an agent loads both skills, finds Metabase already up, and jumps straight here. If this is the local instance you launched through this workflow, **forward to the `setup-metabase-instance` skill** so its Gate 1 walks the user through the first-run wizard; once that returns, re-run step 3 here. If this is a user-supplied Cloud or self-hosted URL, tell the user to open `<INSTANCE_URL>` in their browser, complete the first-run wizard there, and then come back so you can re-run step 3 here. Do not "just run OAuth and hope" — the OAuth flow will land on the wizard page instead of an authorize page and will hang.
+   - **Version < 60** — tell the user to upgrade Metabase, then stop.
+   - **`/api/mcp` returns `404`** — MCP is on by default in 60+ and has no toggle, so this usually means the version is older than reported or the URL is wrong. Ask the user to confirm.
+   - **Other HTTP codes** — surface the code to the user and stop.
 
    **Never call `POST /api/setup`, `POST /api/session`, or any other authenticated Metabase REST endpoint.** Those bypass the OAuth flow this skill depends on. If the user asks you to, refuse.
 

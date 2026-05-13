@@ -5,6 +5,12 @@ description: Set up and run a local Metabase instance. Downloads the JAR (if Jav
 
 # Set Up a Local Metabase Instance
 
+**Read this entire skill file end-to-end before taking any action.** Do not skim, do not stop at the first matching step, do not act on the summary alone. Prerequisite checks, launch sections, init gates, and post-setup handoff rules are scattered through the document; skipping ahead has repeatedly produced broken flows. Load the full text into context first, then start executing.
+
+**Follow these instructions exactly as written.** Do not make assumptions, do not "be helpful" by overstepping, do not silently substitute "equivalent" actions for the ones specified. Every step, every verbatim message, every gate, and every prohibition is here because skipping or improvising on it has produced a known regression. If a step says "send this verbatim", send exactly that. If a step says "stop and wait", stop and wait. If a step says "do not call endpoint X", do not call X — even if the user asks you to. When in doubt, do less, not more.
+
+---
+
 This skill helps users run a local Metabase instance for development, testing, or exploration.
 
 ## Important: Network Access Required
@@ -285,24 +291,103 @@ Once healthy, tell the user:
 
 The user must drive setup in the browser. You only run the read-only verification curls below. Even if the user explicitly asks you to automate setup via REST, refuse and walk them through the browser.
 
-### Gate 1 — First-run wizard is complete (programmatic)
+### Gate 1 — First-run wizard is complete (background poll)
 
-Run this **first**, before anything else, before telling the user "Metabase is ready":
+This gate is **passive**: the server is the source of truth, not the user. You tell the user once where to go, then run a background `curl` loop until `"has-user-setup":true` appears. **Do not ask the user to confirm.** Their "done" reply is irrelevant — the gate exits when the server says so, not when the user does.
 
-```bash
-curl -s http://localhost:$PORT/api/session/properties | grep -o '"has-user-setup":[a-z]*'
-```
+1. **Initial probe:**
 
-- `"has-user-setup":true` → first-run is done, continue to Gate 2.
-- `"has-user-setup":false` → first-run is **NOT** done. Stop. Send this to the user verbatim and wait:
+   ```bash
+   curl -s http://localhost:$PORT/api/session/properties | grep -o '"has-user-setup":[a-z]*'
+   ```
 
-   > Open `http://localhost:$PORT` in your browser and complete the Metabase first-run wizard — create an admin account, then either connect a database or click "I'll add my data later". Tell me once you're on the Metabase home page.
+   - `"has-user-setup":true` → gate passes, continue to Gate 2.
+   - `"has-user-setup":false` → continue to step 2.
 
-   After the user confirms, **re-run Gate 1**. Loop until it returns `true`. Do not skip this loop. Do not advance on the user's word alone — verify with curl every time.
+2. **Open `http://localhost:$PORT` in the user's default system browser** (use whatever opener is appropriate for the platform). Then tell the user verbatim and immediately move to step 3 — do **not** wait for a reply:
 
-### Gate 2 — Hand back to MCP setup
+   > I opened the Metabase first-run wizard in your default browser. Complete it there — I'll detect automatically when you're done.
 
-Only after Gate 1 passes, resume the `setup-metabase-mcp` skill with `http://localhost:$PORT` as the instance URL. Do not ask the user for the URL again, you already know it. That skill validates the URL (version + MCP endpoint) and handles the plugin-side configuration (`.mcp.json`, OAuth login, asking the user to start a new chat). Do not duplicate those checks here.
+3. **Start the background poll** (max 2 minutes, 5-second interval). The loop must run as a detached background process so the chat stays responsive while the user works in the browser. Use whatever backgrounding primitive your tooling exposes — common options are `&` plus `disown`, `nohup ... &`, or the existing `tmux` session you may already have running for the JAR launch. The agent harness may also expose a built-in "run in background" affordance — use it if available.
+
+   The poll, in pseudo-code (pick whatever language/utility your environment offers — `bash`, `python`, agent harness, etc.):
+
+   ```
+   deadline = now + 120 seconds
+   loop:
+     resp = GET http://localhost:$PORT/api/session/properties
+     if resp contains '"has-user-setup":true':
+       report success and exit
+     if now >= deadline:
+       report timeout and exit
+     sleep 5 seconds
+   ```
+
+   Surface two distinct outcomes to step 4 (e.g. exit code `0` vs `1`, return value, or a status flag — whatever your runner uses).
+
+4. **Wait for the loop to exit:**
+
+   - **Exit code 0** (server flipped to `true`) → gate passes. Advance to Gate 2.
+   - **Exit code 1** (2-minute timeout) → fall through to step 5 (user-driven mode).
+
+5. **Timeout fallback — user-driven re-check.** Once 2 minutes have passed without the server flipping, stop polling automatically. Send the user verbatim:
+
+   > It's been 2 minutes and I haven't seen the wizard complete on the Metabase side. Take your time — just tell me once you've finished setup and I'll verify.
+
+   Then wait for any user reply. When they reply, run one explicit `curl`:
+
+   ```bash
+   curl -s http://localhost:$PORT/api/session/properties | grep -o '"has-user-setup":[a-z]*'
+   ```
+
+   - `true` → gate passes, advance to Gate 2.
+   - `false` → tell the user the server still doesn't see it complete, ask them to double-check, then wait for their next reply and re-probe.
+
+While the background loop (step 3) is running:
+
+- If the user asks you a question, answer it — but **do not** stop the loop and **do not** advance to Gate 2 on their word alone.
+- If the user says "done" / "ready" / "I finished", respect them and **run an explicit probe right away** (don't wait for the next 5-second tick):
+
+   ```bash
+   curl -s http://localhost:$PORT/api/session/properties | grep -o '"has-user-setup":[a-z]*'
+   ```
+
+   - `true` → great, kill the background loop and advance to Gate 2.
+   - `false` → reply briefly: "The server doesn't show the wizard complete yet — double-check the last step in the browser." Keep the background loop running; it will pick up the flip on its own once the wizard really completes.
+
+### Gate 2 — Offer the user a chance to connect their own database (mandatory ask)
+
+**You MUST ask the user this question and wait for their explicit reply before advancing to Gate 3.** Do not skip this gate "to be helpful". Do not infer the answer from prior context. Do not proceed on silence. A fresh Metabase only has the Sample Database; the user almost always wants their own data, and not asking is one of the most common UX regressions in this skill.
+
+1. **Send the user this message verbatim** (do not paraphrase, do not summarise, do not assume the user already wants to skip):
+
+   > Metabase is set up. By default it only knows about its Sample Database. Want to connect your own database now so you can ask Codex questions about your data? Reply **yes** to open the "Add database" page in Metabase, or **no** / **skip** to continue with just the Sample Database (you can always add one later from Admin → Databases).
+
+2. **Stop generating and wait for a reply.** Do not advance to step 3 or to Gate 3 until you have an explicit user message addressing this question.
+
+3. **Branch on the reply:**
+
+   - User says **yes** (or equivalent like "sure", "add it", "let's do it") → continue to the "If the user says yes" sub-section below.
+   - User says **no** / **skip** (or equivalent like "later", "not now", "just the sample") → continue to Gate 3.
+   - User replies with something unrelated → re-send the verbatim message and wait again. Do not abandon the gate.
+
+#### If the user says yes
+
+Open `http://localhost:$PORT/admin/databases/create` in the user's default system browser, then send them verbatim:
+
+> I opened the "Add database" page in your browser. Fill in the connection details for your database (host, port, credentials, etc.), test the connection, and save it. Tell me once you've saved it successfully.
+
+Do **not** automate the form submission — connection credentials must come from the user via Metabase's UI, never via chat. Opening the URL is fine; entering the credentials for them is not.
+
+This gate completes on the user's confirmation when they reply "done" / "added" / "saved".
+
+#### If the user says no / skip
+
+Continue immediately to Gate 3.
+
+### Gate 3 — Hand back to MCP setup
+
+Only after Gates 1 and 2 are both resolved, resume the `setup-metabase-mcp` skill with `http://localhost:$PORT` as the instance URL. Do not ask the user for the URL again, you already know it. That skill validates the URL (version + MCP endpoint) and handles the plugin-side configuration (`.mcp.json`, OAuth login, asking the user to start a new chat). Do not duplicate those checks here.
 
 ---
 
