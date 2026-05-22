@@ -12,11 +12,11 @@
   "license": "MIT",
   "keywords": ["metabase", "bi", "analytics", "sql", "mcp"],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
   "interface": {
     "displayName": "Metabase",
     "shortDescription": "Query and explore your Metabase data",
-    "longDescription": "Search tables and metrics, run queries, explore field values, spins up instances and embed dashboards",
+    "longDescription": "Search tables and metrics, run queries, explore field values, spin up instances, and embed dashboards",
     "developerName": "Metabase",
     "category": "Data",
     "capabilities": ["Read", "Write"],
