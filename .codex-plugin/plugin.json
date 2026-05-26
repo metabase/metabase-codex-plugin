@@ -12,7 +12,7 @@
   "license": "MIT",
   "keywords": ["metabase", "bi", "analytics", "sql", "mcp"],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
   "interface": {
     "displayName": "Metabase",
     "shortDescription": "Query and explore your Metabase data",
